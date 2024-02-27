@@ -89,7 +89,7 @@ func TestProcessReceiptsAndRetrievePoints(t *testing.T) {
 		}
 
 		// Check if the points match the expected value
-		expectedPoints := 23 
+		expectedPoints := 23
 		if pointsResponse.Points != expectedPoints {
 			t.Fatalf("Expected points %d; got %d", expectedPoints, pointsResponse.Points)
 		}

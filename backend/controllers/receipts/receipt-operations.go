@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
 	"github.com/backend/processortest/models"
 	"github.com/backend/processortest/utils"
 	"github.com/gorilla/mux"
@@ -25,17 +26,16 @@ func ProcessReceipts(w http.ResponseWriter, r *http.Request, c *cache.Cache, pro
 		return
 	}
 
-	receiptID, err := utils.GenerateReceiptID(receipt, c)
-	if err != nil {
-		http.Error(w, "The receipt was already processed", http.StatusInternalServerError)
-		return
-	}
+	receiptID := utils.GenerateReceiptID(c)
 
 	// Validate the generated ID format
 	if err := utils.ValidateID(receiptID); err != nil {
 		http.Error(w, fmt.Sprintf("Invalid generated ID: %s", err), http.StatusInternalServerError)
 		return
 	}
+
+	// Mark the receipt ID as used
+	c.Set(receiptID, receipt, cache.DefaultExpiration)
 
 	if receiptID == "" {
 		// Receipt ID generation failed, return an error

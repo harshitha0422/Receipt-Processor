@@ -1,20 +1,17 @@
 package utils
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
 	"regexp"
-	"sort"
-
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/backend/processortest/models"
+	"github.com/google/uuid"
 	"github.com/patrickmn/go-cache"
 )
 
@@ -104,43 +101,20 @@ func parseTotal(total string) float64 {
 	return value
 }
 
-func GenerateReceiptID(receipt models.Receipt, c *cache.Cache) (string, error) {
-	// Sort item descriptions for consistency
-	sort.Slice(receipt.Items, func(i, j int) bool {
-		return receipt.Items[i].ShortDescription < receipt.Items[j].ShortDescription
-	})
+func GenerateReceiptID(c *cache.Cache) string {
+	var GenID string
 
-	// Create a deterministic hash of relevant information
-	hasher := sha256.New()
-	_, err := fmt.Fprintf(hasher, "%s%s%s", receipt.Retailer, receipt.PurchaseDate, receipt.PurchaseTime)
-	if err != nil {
-		return "", fmt.Errorf("failed to write retailer, date, and time to hasher: %w", err)
-	}
+	for {
+		// Generate a new UUID
+		GenID = uuid.New().String()
 
-	for _, item := range receipt.Items {
-		_, err := fmt.Fprintf(hasher, "%s%s", item.ShortDescription, item.Price)
-		if err != nil {
-			return "", fmt.Errorf("failed to write item description and price to hasher: %w", err)
+		// Check if the generated UUID exists in the cache
+		if _, exists := c.Get(GenID); !exists {
+			break // Break the loop if the UUID is not in the cache
 		}
 	}
 
-	_, err = fmt.Fprintf(hasher, "%s", receipt.Total)
-	if err != nil {
-		return "", fmt.Errorf("failed to write total to hasher: %w", err)
-	}
-
-	receiptID := hex.EncodeToString(hasher.Sum(nil))
-
-	// Check if the receipt ID has been used before
-	if _, exists := c.Get(receiptID); exists {
-		// Receipt ID has been used before, return an error
-		return receiptID, fmt.Errorf("The same receipt is passed")
-	}
-
-	// Mark the receipt ID as used
-	c.Set(receiptID, receipt, cache.DefaultExpiration)
-
-	return receiptID, nil
+	return GenID
 }
 
 // ValidateReceipt checks if the provided receipt is valid according to the OpenAPI schema.
@@ -167,12 +141,12 @@ func ValidateReceipt(receipt models.Receipt) error {
 		return errors.New("Retailer name has invalid characters")
 	}
 
-	// Validate purchase date format
+	// Validate purchase date format  //priority 1
 	if _, err := time.Parse("2006-01-02", receipt.PurchaseDate); err != nil {
 		return errors.New("Invalid PurchaseDate format")
 	}
 
-	// Validate purchase time format
+	// Validate purchase time format //priority 2
 	if _, err := time.Parse("15:04", receipt.PurchaseTime); err != nil {
 		return errors.New("Invalid PurchaseTime format")
 	}
@@ -182,8 +156,10 @@ func ValidateReceipt(receipt models.Receipt) error {
 		return errors.New("Invalid Total format")
 	}
 
-	// Validate each item
+	// Calculate total from item prices
+	var totalFromItems float64
 	for _, item := range receipt.Items {
+		// Validate each item
 		if item.ShortDescription == "" {
 			return errors.New("Item ShortDescription is required")
 		}
@@ -200,6 +176,25 @@ func ValidateReceipt(receipt models.Receipt) error {
 		if matched, _ := regexp.MatchString("^\\d+\\.\\d{2}$", item.Price); !matched {
 			return errors.New("Item Price has an invalid format")
 		}
+
+		// Parse item price to float64 and add it to total
+		price, err := strconv.ParseFloat(item.Price, 64)
+		if err != nil {
+			return errors.New("Failed to parse item price")
+		}
+		totalFromItems += price
+	}
+
+	// Parse total from string to float64
+	total, err := strconv.ParseFloat(receipt.Total, 64)
+	if err != nil {
+		return errors.New("Failed to parse total amount")
+	}
+
+	// Compare total from items with provided total
+	epsilon := 0.0001 // Adjust based on your precision requirements
+	if math.Abs(totalFromItems-total) > epsilon {
+		return errors.New("Total amount does not match the sum of item prices")
 	}
 
 	return nil
@@ -211,6 +206,5 @@ func ValidateID(id string) error {
 	if matched, _ := regexp.MatchString("^\\S+$", id); !matched {
 		return errors.New("Invalid ID format")
 	}
-
 	return nil
 }

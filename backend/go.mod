@@ -9,6 +9,8 @@ require (
 	github.com/stretchr/testify v1.8.4
 )
 
+require github.com/google/uuid v1.6.0 // indirect
+
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-sql-driver/mysql v1.7.1

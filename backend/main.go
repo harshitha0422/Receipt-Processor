@@ -20,9 +20,8 @@ func main() {
 	routes.RegisterRoutes(router, c, processedReceiptsCache)
 
 	http.Handle("/", router)
-	fmt.Println("Starting server....")
 
-	err := http.ListenAndServe(":9016", router)
+	err := http.ListenAndServe(":9018", router)
 	if err != nil {
 		fmt.Println("Error starting server:", err)
 	}
